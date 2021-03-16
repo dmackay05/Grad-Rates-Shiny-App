@@ -3,14 +3,7 @@ library(shiny)
 
 shinyServer(function(input, output) {
 
-    lea_info <- grad_rates %>%
-        select(lea_name, school_name, school_number) %>%
-        unique() %>%
-        mutate(charter_flag = if_else(str_detect(lea_name, "District"), 0, 1),
-               school_name_numb = paste(school_name, school_number, sep = " - ")) %>%
-        arrange(charter_flag, lea_name)
-
-    output$lea_selector <- renderUI({
+        output$lea_selector <- renderUI({
 
         selectInput(
             inputId = "lea",
@@ -22,7 +15,7 @@ shinyServer(function(input, output) {
 
     output$school_selector <- renderUI({
 
-        available <- lea_info[lea_info$lea_name == input$lea, "school_name_numb"]
+        available <- lea_info[lea_info$lea_name == input$lea, "school_name"]
 
         selectInput(
             inputId = "school_name",
@@ -69,10 +62,10 @@ shinyServer(function(input, output) {
 
     dataset1 <- reactive({
         grad_rates %>%
-            mutate(school_name_numb = paste(school_name, school_number, sep = " - ")) %>%
+            mutate(school_name = paste(school_name, school_number, sep = " - ")) %>%
             filter(str_detect(lea_name, input$lea),
                    str_detect(sub_group_code, input$group),
-                   str_detect(school_name_numb, input$school_name),
+                   str_detect(school_name, input$school_name),
                    cohort_year >= input$cohort,
                    cohort_type == input$cohort_type) %>%
             mutate(cohort_graduation_rate = cohort_graduation_rate / 100,
@@ -81,21 +74,21 @@ shinyServer(function(input, output) {
 
     dataset2 <- reactive({
         hs_completion_status %>%
-            mutate(school_name_numb = paste(school_name, school_nbr, sep = " - ")) %>%
+            mutate(school_name = paste(school_name, school_nbr, sep = " - ")) %>%
             filter(cohort_type == 'FEDERAL4YR', cohort_year < 2021,
                    str_detect(lea_name, input$lea),
-                   str_detect(school_name_numb, input$school_name),
+                   str_detect(school_name, input$school_name),
                    cohort_year >= input$cohort)
     })
 
     dataset3 <- reactive({
         hs_completion_status %>%
-            mutate(school_name_numb = paste(school_name, school_nbr, sep = " - ")) %>%
+            mutate(school_name = paste(school_name, school_nbr, sep = " - ")) %>%
             filter(cohort_type == 'FEDERAL4YR', cohort_year < 2021,
                    str_detect(lea_name, input$lea),
-                   str_detect(school_name_numb, input$school_name),
+                   str_detect(school_name, input$school_name),
                    cohort_year >= input$cohort) %>%
-            group_by(lea_name, school_name, school_name_numb, cohort_year, outcome_description) %>%
+            group_by(lea_name, school_name, school_name, cohort_year, outcome_description) %>%
             summarise(student_count = n()) %>%
             mutate(outcome_description = ifelse(is.na(outcome_description), 'Excluded', outcome_description)) %>%
             pivot_wider(id_cols = c(lea_name, school_name, cohort_year),
@@ -110,10 +103,10 @@ shinyServer(function(input, output) {
 
     dataset4 <- reactive({
         hs_completion_status %>%
-            mutate(school_name_numb = paste(school_name, school_nbr, sep = " - ")) %>%
+            mutate(school_name = paste(school_name, school_nbr, sep = " - ")) %>%
             filter(cohort_type == 'FEDERAL4YR', cohort_year < 2021,
                    str_detect(lea_name, input$lea),
-                   str_detect(school_name_numb, input$school_name),
+                   str_detect(school_name, input$school_name),
                    cohort_year >= input$cohort) %>%
             mutate(outcome_description = if_else(is.na(outcome_description), "Excluded", outcome_description)) %>%
             arrange(outcome_description) %>%
@@ -129,7 +122,9 @@ shinyServer(function(input, output) {
             mutate(total = sum(across(where(is.numeric))))
     })
 
-    output$trend <- plotly::renderPlotly({
+    # trend_plot <- eventReactive()
+
+    output$trend <- renderPlot({
         data_name <- dataset1()
         ggplot(data_name) +
             geom_line(aes(x = cohort_year, y = cohort_graduation_rate, group = 1)) +
@@ -170,6 +165,7 @@ shinyServer(function(input, output) {
     }, width = "900px")
 
         output$counts <- renderTable({
+            validate(need(input$school_name != input$lea , "Please choose a school"))
             data <-dataset2() %>%
                 group_by(lea_name, school_name, cohort_year, outcome_description) %>%
                 summarise(student_count = n()) %>%
@@ -187,6 +183,7 @@ shinyServer(function(input, output) {
 
 
     output$status <- renderTable({
+        validate(need(input$school_name != input$lea , ""))
         data <- dataset2() %>%
             mutate(outcome_description = if_else(is.na(outcome_description), "Excluded", outcome_description)) %>%
             arrange(outcome_description) %>%
